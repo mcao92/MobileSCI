@@ -19,15 +19,53 @@ import cv2
 from torch.cuda.amp import autocast, GradScaler
 import einops
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "8"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+from diffusers import AutoencoderKL
+
+args = parse_args()
+
+vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
+
+vae = vae.to(args.device)
+
+for p in vae.parameters():
+    p.requires_grad = False
+
+def encode_img(input_img):
+    # Single image -> single latent in a batch (so size 1, 4, 32, 32)
+    if len(input_img.shape)<4:
+        input_img = input_img.unsqueeze(0)
+
+    latent = vae.encode(input_img*2 - 1) # Note scaling
+
+    return 0.18215 * latent.latent_dist.sample()
+
+def process_model_output(model_out): #size (2,8,256,256)
+
+    latents = []
+
+    for index in range(model_out.shape[1]):
+        model_out_i = model_out[:,index,:,:]
+        tensor = model_out_i.unsqueeze(1)
+        expanded_tensor = tensor.repeat(1, 3, 1, 1)
+        latent = encode_img(expanded_tensor)
+        latents.append(latent)
+
+    latents = torch.cat(latents, dim=1)
+    return latents
 
 def train(args,network_student,network_teacher,logger,mask,mask_s,writer=None):
     
     optimizer = optim.Adam(network_student.parameters(), lr=args.lr)
     # scheduler = optim.lr_scheduler.StepLR(optimizer,step_size=1,gamma=0.9)
     criterion  = nn.MSELoss()
-    # criterion  = nn.L1Loss()
+    
     criterion = criterion.to(args.device)
+
+    criterion_dist  = nn.L1Loss()
+    criterion_dist = criterion_dist.to(args.device)
+
     rank = 0
     if args.distributed:
         rank = dist.get_rank()
@@ -64,15 +102,21 @@ def train(args,network_student,network_teacher,logger,mask,mask_s,writer=None):
             # with autocast():
             model_out = network_student(meas,Phi,Phi_s)
 
-            # with torch.no_grad():
-            teacher_model_out = network_teacher(meas,Phi,Phi_s) 
+            latents_student = process_model_output(model_out)
+
+            with torch.no_grad():
+                teacher_model_out = network_teacher(meas,Phi,Phi_s) 
+                latents_teacher = process_model_output(teacher_model_out)
+            
+            perceptual_loss = criterion_dist(latents_student,latents_teacher)
 
             DS_loss = torch.sqrt(criterion(model_out, gt))
 
             TS_loss = torch.sqrt(criterion(model_out, teacher_model_out))
 
-            loss = DS_loss + TS_loss
-            
+            loss = DS_loss + TS_loss + perceptual_loss
+            # loss = perceptual_loss
+
             # scaler.scale(loss).backward()
             # scaler.step(optimizer)
             # scaler.update()
@@ -137,11 +181,12 @@ if __name__ == '__main__':
         dist.init_process_group(backend="nccl")
         rank = dist.get_rank()
 
-    # network_teacher = Network(color_ch=args.color_ch,depth=24,width=64).to(args.device)
+    network_teacher = Network(color_ch=args.color_ch,depth=24,width=64).to(args.device)
 
-    network_teacher = Network_teacher(color_ch=args.color_ch).to(args.device)
+    # network_teacher = Network_teacher(color_ch=args.color_ch).to(args.device)
 
     network_teacher.load_state_dict(torch.load(args.pretrained_teacher_model))
+
     for p in network_teacher.parameters():
         p.requires_grad = False
 
@@ -164,6 +209,7 @@ if __name__ == '__main__':
 
     if args.distributed:
         network_student = DDP(network_student,device_ids=[local_rank],output_device=local_rank,find_unused_parameters=True)
+        # network_teacher = DDP(network_teacher,device_ids=[local_rank],output_device=local_rank,find_unused_parameters=True)
 
     mask, mask_s = random_masks(mask_path="masks/mask_gray.mat")
     # mask, mask_s = random_masks(size_h=256,size_w=256)
