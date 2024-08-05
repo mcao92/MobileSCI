@@ -8,6 +8,9 @@ motivate us to develop mobile reconstruction methods for real-world applications
 a novel bottleneck block of our proposed MobileSCI to alleviate the computational burden. Finally, a customized knowledge distillation strategy is utilized to further improve the reconstruction quality. Extensive results on both simulated and real data show that our proposed MobileSCI can achieve superior reconstruction quality with high efficiency on the mobile devices. Particularly, we can reconstruct a 256×256×8 snapshot compressed measurement with real-time performance (about 35 FPS) on an iPhone 15.
 <hr />
 
+## Network Architecture
+![Illustration of MobileSCI](/figure/network.png)
+
 ## Installation
 Please see the [Installation Manual](docs/install.md) for MobileSCI Installation. 
 
@@ -34,6 +37,9 @@ Specify the path of weight parameters, then launch 6 benchmark test in grayscale
 ```
 python tools/test.py configs/mobile_sci/mobile_sci.py --weights=checkpoints/mobilesci_base.pth
 ```
+
+## Video SCI pipeline & PSNR-Latency Comparison
+![Illustration of Video SCI](/figure/psnr.png)
 
 ## Citation
 
