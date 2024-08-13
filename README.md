@@ -41,8 +41,12 @@ python tools/test.py configs/mobile_sci/mobile_sci.py --weights=checkpoints/mobi
 ## Video SCI pipeline & PSNR-Latency Comparison
 ![Illustration of Video SCI](/figure/psnr.png)
 
-## Citation
+## Inference on CoreML
+Please refer to https://github.com/apple/ml-mobileone/blob/main/ModelBench/README.md for more details on the tutorial for inference on CoreML. Thanks Apple!
 
+
+## Citation
+If our code or models help your work, please cite our [paper](https://openreview.net/pdf?id=8IgoeNhRBg):
 ```
 @inproceedings{cao2024towards,
   title={Towards Real-time Video Compressive Sensing on Mobile Devices},
